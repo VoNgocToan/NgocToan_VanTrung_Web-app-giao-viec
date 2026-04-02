@@ -39,10 +39,24 @@ class Attachment extends BaseModel
      */
     public function create(array $data): bool
     {
+        // file_type mặc định là 'employee', có thể override thành 'manager'
+        $fileType = $data['file_type'] ?? 'employee';
+        
         $stmt = $this->db->prepare(
-            'INSERT INTO tep_dinh_kem(task_id, original_name, stored_name, mime_type, file_size, encrypted_path, uploaded_by, created_at)
-             VALUES(:task_id, :original_name, :stored_name, :mime_type, :file_size, :encrypted_path, :uploaded_by, NOW())'
+            'INSERT INTO tep_dinh_kem(task_id, original_name, stored_name, mime_type, file_size, encrypted_path, uploaded_by, file_type, upload_reason, created_at)
+             VALUES(:task_id, :original_name, :stored_name, :mime_type, :file_size, :encrypted_path, :uploaded_by, :file_type, :upload_reason, NOW())'
         );
-        return $stmt->execute($data);
+        
+        return $stmt->execute([
+            'task_id' => $data['task_id'],
+            'original_name' => $data['original_name'],
+            'stored_name' => $data['stored_name'],
+            'mime_type' => $data['mime_type'],
+            'file_size' => $data['file_size'],
+            'encrypted_path' => $data['encrypted_path'],
+            'uploaded_by' => $data['uploaded_by'],
+            'file_type' => $fileType,
+            'upload_reason' => $data['upload_reason'] ?? null,
+        ]);
     }
 }

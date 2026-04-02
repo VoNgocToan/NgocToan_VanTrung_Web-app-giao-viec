@@ -5,12 +5,10 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\BaseController;
+use App\Models\Attachment;
 use App\Models\Log;
 use App\Models\Project;
-
-/**
- * Controller cho module quản lý dự án.
- */
+use App\Services\FileCryptoService;
 class ProjectController extends BaseController
 {
     /**
@@ -58,6 +56,12 @@ class ProjectController extends BaseController
 
         $model->addMember($projectId, (int) $user['id'], 'lead');
         (new Log())->create($user['id'], 'create', 'project', $projectId, 'Tạo dự án mới');
+        
+        // Xử lý upload file từ manager (nếu có)
+        if (!empty($_FILES['project_attachment']['name'])) {
+            $this->handleProjectFileUpload($projectId);
+        }
+        
         \flash('success', 'Tạo dự án thành công.');
         \redirect('du_an/index');
     }
@@ -158,5 +162,62 @@ class ProjectController extends BaseController
         }
 
         \redirect('du_an/members', ['id' => $projectId]);
+    }
+
+    /**
+     * Xử lý upload file dự án từ manager và mã hóa trước lưu.
+     */
+    private function handleProjectFileUpload(int $projectId): void
+    {
+        $user = Auth::user();
+        $file = $_FILES['project_attachment'] ?? null;
+
+        if (!$file || empty($file['name'])) {
+            return;
+        }
+
+        try {
+            // Kiểm tra kích thước file (20MB)
+            if ((int) $file['size'] > MAX_UPLOAD_BYTES) {
+                \flash('warning', 'File dự án vượt quá 20MB, bỏ qua upload.');
+                return;
+            }
+
+            // Kiểm tra định dạng file
+            $allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'txt'];
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($extension, $allowedExt, true)) {
+                \flash('warning', 'Định dạng file dự án không được hỗ trợ, bỏ qua upload.');
+                return;
+            }
+
+            // Mã hóa file
+            $stored = (new FileCryptoService())->encryptAndStore($file['tmp_name'], $file['name']);
+
+            // Lưu metadata với file_type='project_manager'
+            $attachmentModel = new \App\Models\Attachment();
+            $reason = trim($_POST['upload_reason'] ?? '');
+
+            $ok = $attachmentModel->create([
+                'task_id' => null, // Không liên quan task, chỉ project
+                'original_name' => $file['name'],
+                'stored_name' => $stored['stored_name'],
+                'mime_type' => $file['type'] ?: 'application/octet-stream',
+                'file_size' => (int) $file['size'],
+                'encrypted_path' => $stored['path'],
+                'uploaded_by' => $user['id'],
+                'file_type' => 'project_manager',
+                'upload_reason' => $reason ?: null,
+            ]);
+
+            if ($ok) {
+                (new Log())->create($user['id'], 'upload', 'project_attachment', $projectId, "Upload file dự án: $reason");
+                \flash('info', 'File tài liệu dự án đã upload và mã hóa.');
+            } else {
+                \flash('warning', 'Không thể lưu metadata file dự án.');
+            }
+        } catch (\Throwable $e) {
+            \flash('warning', 'Upload file dự án thất bại: ' . $e->getMessage());
+        }
     }
 }

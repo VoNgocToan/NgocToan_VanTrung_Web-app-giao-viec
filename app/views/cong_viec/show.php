@@ -76,15 +76,59 @@
 
     <div class="col-lg-5">
         <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header">File đính kèm</div>
+            <div class="card-header">📎 File đính kèm</div>
             <div class="card-body">
+                <?php 
+                $userRole = current_user()['role'];
+                $isAssignee = (int) ($task['assignee_id'] ?? 0) === (int) current_user()['id'];
+                $canAccessTask = (new \App\Models\Task())->canAccess(current_user(), $task['id']);
+                ?>
+                
                 <?php foreach ($tep_dinh_kem as $file): ?>
-                    <div class="border rounded-4 p-3 mb-3">
-                        <div class="fw-semibold"><?= e($file['original_name']) ?></div>
-                        <div class="small text-secondary mb-2">Upload bởi <?= e($file['uploader_name']) ?> • <?= e(format_datetime($file['created_at'])) ?></div>
-                        <a class="btn btn-sm btn-outline-primary" href="<?= e(route_url('files/download', ['id' => $file['id']])) ?>">Tải file</a>
-                    </div>
+                    <?php
+                    // Quyền xem file manager: Manager/Admin
+                    $canViewManagerFile = ($file['file_type'] === 'manager') && 
+                        in_array($userRole, ['manager', 'admin'], true);
+                    
+                    // Quyền xem file project_manager: Tất cả thành viên có quyền truy cập task
+                    $canViewProjectManagerFile = ($file['file_type'] === 'project_manager') && $canAccessTask;
+                    
+                    // Hiển thị file nếu: là file employee HOẶC file manager mà user có quyền HOẶC file project_manager mà user có quyền
+                    if ($file['file_type'] === 'employee' || $canViewManagerFile || $canViewProjectManagerFile):
+                    ?>
+                        <div class="border rounded-4 p-3 mb-3">
+                            <div class="d-flex align-items-start justify-content-between">
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">
+                                        <?= e($file['original_name']) ?>
+                                        <?php if ($file['file_type'] === 'manager'): ?>
+                                            <span class="badge text-bg-info ms-2">Hướng dẫn từ Manager</span>
+                                        <?php elseif ($file['file_type'] === 'project_manager'): ?>
+                                            <span class="badge text-bg-warning ms-2">File từ Manager</span>
+                                        <?php else: ?>
+                                            <span class="badge text-bg-success ms-2">Nộp từ Employee</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    
+                                    <div class="small text-secondary mb-2 mt-1">
+                                        Tải lên bởi <strong><?= e($file['uploader_name']) ?></strong> 
+                                        • <?= e(format_datetime($file['created_at'])) ?>
+                                    </div>
+                                    
+                                    <?php if (($file['file_type'] === 'manager' || $file['file_type'] === 'project_manager') && $file['upload_reason']): ?>
+                                        <div class="small text-muted">
+                                            📝 <em><?= e($file['upload_reason']) ?></em>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <a class="btn btn-sm btn-outline-primary mt-2" href="<?= e(route_url('files/download', ['id' => $file['id']])) ?>">
+                                ⬇️ Tải file
+                            </a>
+                        </div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
+                
                 <?php if (!$tep_dinh_kem): ?>
                     <div class="text-muted">Chưa có file đính kèm.</div>
                 <?php endif; ?>

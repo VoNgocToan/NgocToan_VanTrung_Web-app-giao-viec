@@ -90,6 +90,12 @@ class TaskController extends BaseController
         ]);
 
         (new Log())->create(Auth::user()['id'], 'create', 'task', $taskId, 'Tạo công việc');
+        
+        // Xử lý upload file từ manager (nếu có)
+        if (!empty($_FILES['task_attachment']['name'])) {
+            $this->handleTaskFileUpload($taskId);
+        }
+        
         \flash('success', 'Tạo công việc thành công.');
         \redirect('cong_viec/show', ['id' => $taskId]);
     }
@@ -203,14 +209,14 @@ class TaskController extends BaseController
 
         $file = $_FILES['attachment'];
         if ((int) $file['size'] > MAX_UPLOAD_BYTES) {
-            \flash('danger', 'File vượt quá dung lượng cho phép 5MB.');
+            \flash('danger', 'File vượt quá dung lượng cho phép (20MB).');
             \redirect('cong_viec/show', ['id' => $id]);
         }
 
         $allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'txt'];
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($extension, $allowedExt, true)) {
-            \flash('danger', 'Định dạng file không được hỗ trợ.');
+            \flash('danger', 'Định dạng file không được hỗ trợ. Chỉ hỗ trợ: pdf, doc, docx, xls, xlsx, png, jpg, jpeg, txt');
             \redirect('cong_viec/show', ['id' => $id]);
         }
 
@@ -253,6 +259,7 @@ class TaskController extends BaseController
 
     /**
      * Lưu kết quả duyệt: đạt hoặc yêu cầu làm lại.
+     * Manager có thể upload file hướng dẫn/tài liệu kèm theo.
      */
     public function saveReview(int $id): void
     {
@@ -269,11 +276,131 @@ class TaskController extends BaseController
 
         if ($ok) {
             (new Log())->create(Auth::user()['id'], 'review', 'task', $id, 'Duyệt và đánh giá công việc');
+            
+            // Xử lý upload file từ manager (nếu có)
+            if (!empty($_FILES['manager_attachment']['name'])) {
+                $this->handleManagerFileUpload($id);
+            }
+            
             \flash('success', 'Đã lưu kết quả duyệt.');
         } else {
             \flash('danger', 'Duyệt công việc thất bại.');
         }
 
         \redirect('cong_viec/show', ['id' => $id]);
+    }
+
+    /**
+     * Xử lý upload file từ manager và mã hóa trước lưu.
+     */
+    private function handleManagerFileUpload(int $taskId): void
+    {
+        $user = Auth::user();
+        $file = $_FILES['manager_attachment'] ?? null;
+
+        if (!$file || empty($file['name'])) {
+            return;
+        }
+
+        try {
+            // Kiểm tra kích thước file
+            if ((int) $file['size'] > MAX_UPLOAD_BYTES) {
+                \flash('warning', 'File manager vượt quá 5MB, bỏ qua upload.');
+                return;
+            }
+
+            // Kiểm tra định dạng file
+            $allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'txt'];
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($extension, $allowedExt, true)) {
+                \flash('warning', 'Định dạng file manager không được hỗ trợ, bỏ qua upload.');
+                return;
+            }
+
+            // Mã hóa file
+            $stored = (new FileCryptoService())->encryptAndStore($file['tmp_name'], $file['name']);
+
+            // Lưu metadata
+            $attachmentModel = new Attachment();
+            $reason = trim($_POST['upload_reason'] ?? '');
+            
+            $ok = $attachmentModel->create([
+                'task_id' => $taskId,
+                'original_name' => $file['name'],
+                'stored_name' => $stored['stored_name'],
+                'mime_type' => $file['type'] ?: 'application/octet-stream',
+                'file_size' => (int) $file['size'],
+                'encrypted_path' => $stored['path'],
+                'uploaded_by' => $user['id'],
+                'file_type' => 'manager',
+                'upload_reason' => $reason ?: null,
+            ]);
+
+            if ($ok) {
+                (new Log())->create($user['id'], 'upload', 'attachment', $taskId, "Upload file hướng dẫn (Manager): $reason");
+                \flash('info', 'File hướng dẫn đã upload và mã hóa.');
+            } else {
+                \flash('warning', 'Không thể lưu metadata file manager.');
+            }
+        } catch (\Throwable $e) {
+            \flash('warning', 'Upload file manager thất bại: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Xử lý upload file từ manager khi tạo công việc và mã hóa trước lưu.
+     */
+    private function handleTaskFileUpload(int $taskId): void
+    {
+        $user = Auth::user();
+        $file = $_FILES['task_attachment'] ?? null;
+
+        if (!$file || empty($file['name'])) {
+            return;
+        }
+
+        try {
+            // Kiểm tra kích thước file (20MB cho manager upload)
+            if ((int) $file['size'] > MAX_UPLOAD_BYTES) {
+                \flash('warning', 'File vượt quá 20MB, bỏ qua upload.');
+                return;
+            }
+
+            // Kiểm tra định dạng file
+            $allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'txt'];
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($extension, $allowedExt, true)) {
+                \flash('warning', 'Định dạng file không được hỗ trợ, bỏ qua upload.');
+                return;
+            }
+
+            // Mã hóa file
+            $stored = (new FileCryptoService())->encryptAndStore($file['tmp_name'], $file['name']);
+
+            // Lưu metadata
+            $attachmentModel = new Attachment();
+            $reason = trim($_POST['upload_reason'] ?? '');
+            
+            $ok = $attachmentModel->create([
+                'task_id' => $taskId,
+                'original_name' => $file['name'],
+                'stored_name' => $stored['stored_name'],
+                'mime_type' => $file['type'] ?: 'application/octet-stream',
+                'file_size' => (int) $file['size'],
+                'encrypted_path' => $stored['path'],
+                'uploaded_by' => $user['id'],
+                'file_type' => 'project_manager',
+                'upload_reason' => $reason ?: null,
+            ]);
+
+            if ($ok) {
+                (new Log())->create($user['id'], 'upload', 'attachment', $taskId, "Upload file khi tạo công việc: $reason");
+                \flash('info', 'File đã upload và mã hóa thành công.');
+            } else {
+                \flash('warning', 'Không thể lưu metadata file.');
+            }
+        } catch (\Throwable $e) {
+            \flash('warning', 'Upload file thất bại: ' . $e->getMessage());
+        }
     }
 }

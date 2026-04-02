@@ -10,17 +10,19 @@
     <div class="card-body p-4">
         <?php if ($tep_dinh_kem): ?>
             <div class="alert alert-light border">
-                <div class="fw-semibold mb-2">File nộp kèm</div>
+                <div class="fw-semibold mb-2">📎 File nộp kèm</div>
                 <?php foreach ($tep_dinh_kem as $file): ?>
-                    <div class="mt-2">
-                        <?= e($file['original_name']) ?> -
-                        <a href="<?= e(route_url('files/download', ['id' => $file['id']])) ?>">Tải về để kiểm tra</a>
-                    </div>
+                    <?php if ($file['file_type'] === 'employee'): ?>
+                        <div class="mt-2">
+                            <?= e($file['original_name']) ?> -
+                            <a href="<?= e(route_url('files/download', ['id' => $file['id']])) ?>">Tải về để kiểm tra</a>
+                        </div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
 
-        <form method="post" action="<?= e(route_url('cong_viec/saveReview', ['id' => $task['id']])) ?>">
+        <form method="post" enctype="multipart/form-data" action="<?= e(route_url('cong_viec/saveReview', ['id' => $task['id']])) ?>">
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label fw-semibold">Kết quả duyệt</label>
@@ -36,6 +38,25 @@
                 <div class="col-md-12">
                     <label class="form-label fw-semibold">Nhận xét</label>
                     <textarea class="form-control" name="review_comment" rows="4" placeholder="Nhập nhận xét, mức độ hoàn thành hoặc lý do yêu cầu chỉnh sửa"></textarea>
+                </div>
+
+                <!-- Manager upload file hướng dẫn / tài liệu -->
+                <div class="col-md-12">
+                    <hr>
+                    <h5 class="mb-3">📤 Upload file hướng dẫn/tài liệu (Tuỳ chọn)</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Chọn file</label>
+                            <input type="file" class="form-control" name="manager_attachment">
+                            <div class="small text-secondary mt-2">
+                                File sẽ được mã hóa. Hỗ trợ: pdf, doc, docx, xls, xlsx, png, jpg, jpeg, txt. Max 5MB.
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Lý do/Mô tả file</label>
+                            <input type="text" class="form-control" name="upload_reason" placeholder="VD: Hướng dẫn sửa, tài liệu tham khảo, file yêu cầu, ...">
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="mt-4 d-flex gap-2">

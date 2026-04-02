@@ -8,7 +8,7 @@
 
 <div class="card border-0 shadow-sm">
     <div class="card-body p-4">
-        <form method="post" action="<?= e(route_url('cong_viec/store')) ?>">
+        <form method="post" enctype="multipart/form-data" action="<?= e(route_url('cong_viec/store')) ?>">
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Dự án</label>
@@ -43,11 +43,75 @@
                     <label class="form-label fw-semibold">Điểm KPI kỳ vọng</label>
                     <input type="number" class="form-control" name="expected_score" value="10" min="0">
                 </div>
+
+                <!-- Upload file tài liệu công việc (Manager) -->
+                <div class="col-12">
+                    <hr>
+                    <h5 class="mb-3">📤 Upload file tài liệu công việc (Tuỳ chọn)</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Chọn file</label>
+                            <input type="file" class="form-control" id="task_attachment" name="task_attachment">
+                            <div id="task_error" class="alert alert-danger alert-sm mt-2" style="display: none;"></div>
+                            <div class="small text-secondary mt-2">
+                                File sẽ được mã hóa. Hỗ trợ: pdf, doc, docx, xls, xlsx, png, jpg, jpeg, txt. Max 20MB.
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Lý do/Mô tả file</label>
+                            <input type="text" class="form-control" name="upload_reason" placeholder="VD: Tài liệu yêu cầu, hướng dẫn chi tiết, file mẫu, ...">
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="mt-4 d-flex gap-2">
-                <button class="btn btn-primary">Lưu công việc</button>
+                <button class="btn btn-primary" id="task_submit_btn">Lưu công việc</button>
                 <a class="btn btn-outline-secondary" href="<?= e(route_url('cong_viec/index')) ?>">Hủy</a>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+(function() {
+    const allowedExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'txt'];
+    const maxBytes = 20 * 1024 * 1024; // 20MB
+    const fileInput = document.getElementById('task_attachment');
+    const errorDiv = document.getElementById('task_error');
+    const submitBtn = document.getElementById('task_submit_btn');
+
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', function() {
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+
+        if (!this.files || this.files.length === 0) {
+            return; // Không chọn file là được phép
+        }
+
+        const file = this.files[0];
+        const errors = [];
+
+        // Kiểm tra kích thước file
+        if (file.size > maxBytes) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            errors.push(`❌ File vượt quá dung lượng cho phép (${sizeMB}MB > 20MB)`);
+        }
+
+        // Kiểm tra định dạng file
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!allowedExt.includes(ext)) {
+            errors.push(`❌ Định dạng file không được hỗ trợ (.${ext}). Chỉ hỗ trợ: pdf, doc, docx, xls, xlsx, png, jpg, jpeg, txt`);
+        }
+
+        if (errors.length > 0) {
+            errorDiv.innerHTML = errors.join('<br>');
+            errorDiv.style.display = 'block';
+            submitBtn.disabled = true;
+        } else {
+            submitBtn.disabled = false;
+        }
+    });
+})();
+</script>
