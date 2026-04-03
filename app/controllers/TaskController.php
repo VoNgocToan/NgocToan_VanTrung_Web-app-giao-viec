@@ -112,8 +112,9 @@ class TaskController extends BaseController
         $task = $taskModel->find($id);
         $project = $projectModel->find((int) $task['project_id']);
         $members = $projectModel->members((int) $task['project_id']);
+        $selectedAssigneeIds = array_map(static fn (array $item): int => (int) $item['id'], $taskModel->assignedUsers($id));
 
-        $this->render('cong_viec/assign', compact('task', 'project', 'members'), 'Phân công công việc');
+        $this->render('cong_viec/assign', compact('task', 'project', 'members', 'selectedAssigneeIds'), 'Phân công công việc');
     }
 
     /**
@@ -126,24 +127,38 @@ class TaskController extends BaseController
             \redirect('cong_viec/index');
         }
 
-        $assigneeId = (int) ($_POST['assignee_id'] ?? 0);
-        $task = (new Task())->find($id);
+        $taskModel = new Task();
+        $task = $taskModel->find($id);
         $projectModel = new Project();
+        $assigneeIds = array_map('intval', $_POST['assignee_ids'] ?? []);
 
-        if (!$task || !$projectModel->userBelongsToProject((int) $task['project_id'], $assigneeId)) {
-            \flash('danger', 'Nhân viên không thuộc dự án nên không thể phân công.');
+        if (!$task) {
+            \flash('danger', 'Không tìm thấy công việc cần phân công.');
+            \redirect('cong_viec/index');
+        }
+
+        $assigneeIds = array_values(array_unique(array_filter($assigneeIds, static fn (int $value): bool => $value > 0)));
+        if (!$assigneeIds) {
+            \flash('danger', 'Vui lòng chọn ít nhất một thành viên phụ trách.');
             \redirect('cong_viec/assign', ['id' => $id]);
         }
 
-        $ok = (new Task())->assign($id, [
-            'assignee_id' => $assigneeId,
+        foreach ($assigneeIds as $assigneeId) {
+            if (!$projectModel->userBelongsToProject((int) $task['project_id'], $assigneeId)) {
+                \flash('danger', 'Có thành viên không thuộc dự án nên không thể phân công.');
+                \redirect('cong_viec/assign', ['id' => $id]);
+            }
+        }
+
+        $ok = $taskModel->assign($id, [
+            'assignee_ids' => $assigneeIds,
             'start_date' => $_POST['start_date'] ?? date('Y-m-d'),
             'deadline' => $_POST['deadline'] ?? $task['deadline'],
         ]);
 
         if ($ok) {
-            (new Log())->create(Auth::user()['id'], 'assign', 'task', $id, 'Phân công công việc');
-            \flash('success', 'Phân công công việc thành công.');
+            (new Log())->create(Auth::user()['id'], 'assign', 'task', $id, 'Điều chỉnh phân công công việc');
+            \flash('success', 'Lưu phân công thành công.');
         } else {
             \flash('danger', 'Phân công công việc thất bại.');
         }
@@ -165,7 +180,7 @@ class TaskController extends BaseController
         $taskModel = new Task();
         $task = $taskModel->find($id);
 
-        if (!$task || (int) $task['assignee_id'] !== (int) $user['id']) {
+        if (!$task || !$taskModel->isUserAssigned($id, (int) $user['id'])) {
             \flash('danger', 'Bạn không có quyền cập nhật trạng thái công việc này.');
             \redirect('cong_viec/index');
         }
@@ -345,6 +360,39 @@ class TaskController extends BaseController
         } catch (\Throwable $e) {
             \flash('warning', 'Upload file manager thất bại: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Xóa công việc theo điều kiện trạng thái thực tế.
+     */
+    public function destroy(int $id): void
+    {
+        $this->requireRole(['manager', 'admin']);
+        if (!\is_post()) {
+            \redirect('cong_viec/index');
+        }
+
+        $taskModel = new Task();
+        $task = $taskModel->find($id);
+        if (!$task) {
+            \flash('danger', 'Không tìm thấy công việc cần xóa.');
+            \redirect('cong_viec/index');
+        }
+
+        if (!$taskModel->canDelete(Auth::user(), $id)) {
+            \flash('danger', 'Chỉ được xóa công việc ở trạng thái mới tạo, đã phân công, bị chặn hoặc yêu cầu làm lại.');
+            \redirect('cong_viec/show', ['id' => $id]);
+        }
+
+        $title = $task['title'];
+        if ($taskModel->deleteTask($id)) {
+            (new Log())->create(Auth::user()['id'], 'delete', 'task', $id, 'Xóa công việc: ' . $title);
+            \flash('success', 'Đã xóa công việc thành công.');
+            \redirect('cong_viec/index');
+        }
+
+        \flash('danger', 'Không thể xóa công việc.');
+        \redirect('cong_viec/show', ['id' => $id]);
     }
 
     /**

@@ -1,7 +1,7 @@
 <div class="section-header">
     <div>
         <div class="section-title">Duyệt và đánh giá công việc</div>
-        <p class="section-desc"><?= e($task['title']) ?> • Nhân viên phụ trách: <?= e($task['assignee_name'] ?? 'Chưa phân công') ?></p>
+        <p class="section-desc"><?= e($task['title']) ?> • Nhân viên phụ trách: <?= e($task['assignee_names'] ?? 'Chưa phân công') ?></p>
     </div>
     <a class="btn btn-outline-secondary" href="<?= e(route_url('cong_viec/show', ['id' => $task['id']])) ?>">Quay lại</a>
 </div>

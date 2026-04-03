@@ -5,12 +5,11 @@ require __DIR__ . '/app/bootstrap.php';
 
 header('Content-Type: text/html; charset=UTF-8');
 
-// Tách route từ query string theo dạng module/action/id.
-$route = $_GET['route'] ?? 'dashboard/index';
+$route = $_GET['route'] ?? (current_user() ? 'dashboard/index' : 'home/index');
 $route = trim($route, '/');
 $parts = array_values(array_filter(explode('/', $route)));
 
-$controllerKey = $parts[0] ?? 'dashboard';
+$controllerKey = $parts[0] ?? (current_user() ? 'dashboard' : 'home');
 $action = $parts[1] ?? 'index';
 $id = $parts[2] ?? ($_GET['id'] ?? null);
 
@@ -18,8 +17,8 @@ if (is_string($id) && ctype_digit($id)) {
     $id = (int) $id;
 }
 
-// Map route tiếng Việt không dấu sang controller để dễ tìm trong code.
 $controllerMap = [
+    'home' => \App\Controllers\HomeController::class,
     'auth' => \App\Controllers\AuthController::class,
     'dashboard' => \App\Controllers\DashboardController::class,
     'tai_khoan' => \App\Controllers\UserController::class,

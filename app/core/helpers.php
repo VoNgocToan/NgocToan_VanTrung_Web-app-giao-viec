@@ -192,3 +192,145 @@ function active_menu(string $routePrefix): string
     $route = (string) ($_GET['route'] ?? 'dashboard/index');
     return str_starts_with($route, $routePrefix) ? 'is-active' : '';
 }
+
+
+
+/**
+ * Xác định dự án có thể xóa hay không.
+ * Chỉ nên xóa khi dự án còn ở giai đoạn lên kế hoạch để tránh mất dữ liệu vận hành.
+ */
+function project_can_delete(array $project, ?array $user = null): bool
+{
+    $user = $user ?? current_user();
+    if ($user === null || !in_array($user['role'] ?? '', ['admin', 'manager'], true)) {
+        return false;
+    }
+
+    return ($project['status'] ?? '') === 'planning';
+}
+
+/**
+ * Kiểm tra vai trò có được quản lý công việc hay không.
+ */
+function can_manage_tasks(?array $user = null): bool
+{
+    $user = $user ?? current_user();
+    return $user !== null && in_array($user['role'] ?? '', ['manager', 'admin'], true);
+}
+
+/**
+ * Xác định công việc có thể phân công/điều chỉnh từ phía quản lý hay không.
+ */
+function task_can_assign_action(array $task, ?array $user = null): bool
+{
+    if (!can_manage_tasks($user)) {
+        return false;
+    }
+
+    return in_array($task['status'] ?? '', ['new', 'assigned', 'in_progress', 'blocked', 'redo'], true);
+}
+
+/**
+ * Nhân viên được điều chỉnh công việc khi đang là người phụ trách và việc chưa chốt duyệt.
+ */
+function task_can_employee_adjust(array $task, ?array $user = null): bool
+{
+    $user = $user ?? current_user();
+    if (($user['role'] ?? '') !== 'employee') {
+        return false;
+    }
+
+    return in_array($task['status'] ?? '', ['assigned', 'in_progress', 'blocked', 'redo'], true);
+}
+
+/**
+ * Xác định công việc có thể duyệt hay không.
+ */
+function task_can_review(array $task, ?array $user = null): bool
+{
+    if (!can_manage_tasks($user)) {
+        return false;
+    }
+
+    return ($task['status'] ?? '') === 'submitted';
+}
+
+/**
+ * Xác định công việc có thể xóa hay không.
+ */
+function task_can_delete(array $task, ?array $user = null): bool
+{
+    if (!can_manage_tasks($user)) {
+        return false;
+    }
+
+    return in_array($task['status'] ?? '', ['new', 'assigned', 'blocked', 'redo'], true);
+}
+
+/**
+ * Nhãn thao tác chính theo trạng thái công việc.
+ */
+function task_primary_action_label(array $task, ?array $user = null): ?string
+{
+    $user = $user ?? current_user();
+
+    if (task_can_review($task, $user)) {
+        return 'Duyệt';
+    }
+
+    if (task_can_assign_action($task, $user)) {
+        return ($task['status'] ?? '') === 'new' ? 'Phân công' : 'Điều chỉnh';
+    }
+
+    if (task_can_employee_adjust($task, $user)) {
+        return 'Điều chỉnh';
+    }
+
+    return null;
+}
+
+/**
+ * URL thao tác chính theo trạng thái công việc.
+ */
+function task_primary_action_url(array $task, ?array $user = null): ?string
+{
+    $user = $user ?? current_user();
+
+    if (!isset($task['id'])) {
+        return null;
+    }
+
+    if (task_can_review($task, $user)) {
+        return route_url('cong_viec/review', ['id' => $task['id']]);
+    }
+
+    if (task_can_assign_action($task, $user)) {
+        return route_url('cong_viec/assign', ['id' => $task['id']]);
+    }
+
+    if (task_can_employee_adjust($task, $user)) {
+        return route_url('cong_viec/show', ['id' => $task['id']]) . '#employee-adjust-section';
+    }
+
+    return null;
+}
+
+/**
+ * Rút gọn tên nhiều người phụ trách để bảng không bị dài quá.
+ */
+function task_assignee_summary(?string $value, int $visible = 2): string
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 'Chưa phân công';
+    }
+
+    $items = array_values(array_filter(array_map('trim', explode(',', $value))));
+    if (count($items) <= $visible) {
+        return implode(', ', $items);
+    }
+
+    $shown = array_slice($items, 0, $visible);
+    $remain = count($items) - count($shown);
+    return implode(', ', $shown) . ' +' . $remain;
+}

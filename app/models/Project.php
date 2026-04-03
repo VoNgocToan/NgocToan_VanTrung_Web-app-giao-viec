@@ -69,16 +69,19 @@ class Project extends BaseModel
     }
 
     /**
-     * Tạo dự án mới.
+     * Tạo dự án mới với mã tự sinh theo mẫu TTW-{NĂM}-{STT}.
      */
     public function create(array $data): int
     {
+        $year = (int) date('Y');
+        $code = $this->generateNextCode($year);
+
         $stmt = $this->db->prepare(
             'INSERT INTO du_an(code, name, description, start_date, end_date, priority, status, created_by, created_at)
              VALUES(:code, :name, :description, :start_date, :end_date, :priority, :status, :created_by, NOW())'
         );
         $stmt->execute([
-            'code' => $data['code'],
+            'code' => $code,
             'name' => $data['name'],
             'description' => $data['description'],
             'start_date' => $data['start_date'],
@@ -91,20 +94,45 @@ class Project extends BaseModel
     }
 
     /**
-     * Cập nhật thông tin dự án.
+     * Sinh mã dự án tiếp theo theo năm hiện tại. Ví dụ: TTW-2026-001.
+     */
+    public function generateNextCode(?int $year = null): string
+    {
+        $year = $year ?: (int) date('Y');
+        $prefix = sprintf('TTW-%d-', $year);
+
+        $stmt = $this->db->prepare(
+            'SELECT code
+             FROM du_an
+             WHERE code LIKE :prefix
+             ORDER BY code DESC
+             LIMIT 1'
+        );
+        $stmt->execute(['prefix' => $prefix . '%']);
+        $latestCode = (string) ($stmt->fetchColumn() ?: '');
+
+        $nextSequence = 1;
+        if ($latestCode !== '' && preg_match('/^TTW-(\d{4})-(\d{3})$/', $latestCode, $matches)) {
+            $nextSequence = ((int) $matches[2]) + 1;
+        }
+
+        return sprintf('TTW-%d-%03d', $year, $nextSequence);
+    }
+
+    /**
+     * Cập nhật thông tin dự án nhưng không cho sửa mã dự án.
      */
     public function update(int $id, array $data): bool
     {
         $stmt = $this->db->prepare(
             'UPDATE du_an
-             SET code = :code, name = :name, description = :description,
+             SET name = :name, description = :description,
                  start_date = :start_date, end_date = :end_date,
                  priority = :priority, status = :status
              WHERE id = :id'
         );
         return $stmt->execute([
             'id' => $id,
-            'code' => $data['code'],
             'name' => $data['name'],
             'description' => $data['description'],
             'start_date' => $data['start_date'],
@@ -113,6 +141,16 @@ class Project extends BaseModel
             'status' => $data['status'],
         ]);
     }
+
+    /**
+     * Xóa dự án.
+     */
+    public function delete(int $id): bool
+    {
+        return $this->db->prepare('DELETE FROM du_an WHERE id = :id')
+            ->execute(['id' => $id]);
+    }
+
 
     /**
      * Lấy thành viên thuộc dự án.

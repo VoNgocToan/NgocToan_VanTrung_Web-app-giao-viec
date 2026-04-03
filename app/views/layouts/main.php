@@ -1,20 +1,71 @@
-<?php $flash = consume_flash(); $authUser = current_user(); ?>
+<?php
+$flash = consume_flash();
+$authUser = current_user();
+$currentRoute = (string) ($_GET['route'] ?? ($authUser ? 'dashboard/index' : 'home/index'));
+$isPublicPage = !$authUser && str_starts_with($currentRoute, 'home/');
+$isLoginPage = !$authUser && str_starts_with($currentRoute, 'auth/');
+?>
 <!doctype html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title><?= e($title) ?> - Web App Giao Việc</title>
+    <title><?= e($title) ?> - <?= e(APP_NAME) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="assets/css/app.css" rel="stylesheet">
+    <link href="assets/css/app.css?v=20260404a" rel="stylesheet">
 </head>
 <body>
-<?php if (!$authUser): ?>
+<?php if ($isPublicPage): ?>
+    <div class="public-site-shell">
+        <header class="public-header">
+            <div class="public-container public-header-inner">
+                <a class="brand-public" href="<?= e(route_url('home/index')) ?>">
+                    <span class="brand-public-mark">TTW</span>
+                    <span>
+                        <strong>TruTo Work</strong>
+                        <small>Quản lý công việc theo dự án</small>
+                    </span>
+                </a>
+
+                <nav class="public-nav">
+                    <a class="<?= $currentRoute === 'home/index' ? 'is-active' : '' ?>" href="<?= e(route_url('home/index')) ?>">Trang chủ</a>
+                    <a class="<?= $currentRoute === 'home/about' ? 'is-active' : '' ?>" href="<?= e(route_url('home/about')) ?>">Giới thiệu</a>
+                    <a href="<?= e(route_url('auth/login')) ?>">Đăng nhập</a>
+                </nav>
+            </div>
+        </header>
+
+        <main class="public-main">
+            <div class="public-container">
+                <?php if ($flash): ?>
+                    <div class="alert alert-<?= e($flash['type']) ?> alert-dismissible fade show shadow-sm border-0 mt-3">
+                        <?= e($flash['message']) ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                <?php endif; ?>
+
+                <?= $content ?>
+            </div>
+        </main>
+
+        <footer class="public-footer">
+            <div class="public-container public-footer-inner">
+                <span>TruTo Work</span>
+            </div>
+        </footer>
+    </div>
+<?php elseif ($isLoginPage): ?>
     <main class="auth-shell">
-        <div class="container py-5">
+        <div class="container py-4 py-lg-5">
+            <?php if ($flash): ?>
+                <div class="alert alert-<?= e($flash['type']) ?> alert-dismissible fade show shadow-sm border-0 mb-4 mx-auto auth-flash">
+                    <?= e($flash['message']) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
             <?= $content ?>
         </div>
     </main>
@@ -22,8 +73,8 @@
     <div class="app-shell">
         <aside class="sidebar shadow-sm">
             <div class="sidebar-brand">
-                <div class="brand-icon">PA</div>
-                <div class="brand-title">Web app giao việc</div>
+                <div class="brand-icon">TTW</div>
+                <div class="brand-title">TruTo Work</div>
             </div>
 
             <nav class="sidebar-menu">
@@ -54,14 +105,14 @@
             </nav>
 
             <div class="sidebar-footer">
-                <div class="small text-secondary">Đề tài: xây dựng web app giao việc có mã hóa file và tính KPI.</div>
+                <div class="small text-secondary">Nền tảng quản lý công việc theo dự án.</div>
             </div>
         </aside>
 
         <div class="main-shell">
             <header class="topbar shadow-sm">
                 <div class="page-info">
-                    <div class="page-label">Hệ thống quản lý công việc theo dự án</div>
+                    <div class="page-label">TruTo Work</div>
                 </div>
                 <div class="topbar-user">
                     <div class="avatar-badge"><?= e(strtoupper(substr($authUser['name'], 0, 1))) ?></div>

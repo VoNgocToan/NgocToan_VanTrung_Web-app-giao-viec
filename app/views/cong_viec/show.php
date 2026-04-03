@@ -1,12 +1,28 @@
+<?php
+$taskAccessModel = new \App\Models\Task();
+$primaryActionLabel = task_primary_action_label($task, current_user());
+$primaryActionUrl = task_primary_action_url($task, current_user());
+$canAssignedEmployeeUpdate = current_user()['role'] === 'employee'
+    && $taskAccessModel->isUserAssigned((int) $task['id'], (int) current_user()['id'])
+    && in_array($task['status'], ['assigned', 'in_progress', 'blocked', 'redo'], true);
+$statusOptions = ['in_progress' => 'Đang thực hiện', 'blocked' => 'Bị chặn', 'submitted' => 'Chờ duyệt'];
+if (($task['status'] ?? '') === 'blocked') {
+    $statusOptions = ['in_progress' => 'Tiếp tục thực hiện', 'submitted' => 'Chờ duyệt'];
+}
+?>
 <div class="section-header">
     <div>
         <div class="section-title"><?= e($task['title']) ?></div>
         <p class="section-desc"><?= e($task['project_name']) ?> • Người tạo: <?= e($task['creator_name']) ?></p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <?php if (in_array(current_user()['role'], ['manager', 'admin'], true)): ?>
-            <a class="btn btn-outline-primary" href="<?= e(route_url('cong_viec/assign', ['id' => $task['id']])) ?>">Phân công</a>
-            <a class="btn btn-primary" href="<?= e(route_url('cong_viec/review', ['id' => $task['id']])) ?>">Duyệt & đánh giá</a>
+        <?php if ($primaryActionLabel && $primaryActionUrl): ?>
+            <a class="btn btn-outline-primary" href="<?= e($primaryActionUrl) ?>"><?= e($primaryActionLabel) ?></a>
+        <?php endif; ?>
+        <?php if (task_can_delete($task)): ?>
+            <form method="post" action="<?= e(route_url('cong_viec/destroy', ['id' => $task['id']])) ?>" onsubmit="return confirm('Bạn có chắc muốn xóa công việc này không?');">
+                <button type="submit" class="btn btn-outline-danger">Xóa</button>
+            </form>
         <?php endif; ?>
         <a class="btn btn-outline-secondary" href="<?= e(route_url('cong_viec/index')) ?>">Quay lại</a>
     </div>
@@ -18,7 +34,7 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-6"><strong>Dự án:</strong> <?= e($task['project_name']) ?></div>
-                    <div class="col-md-6"><strong>Người phụ trách:</strong> <?= e($task['assignee_name'] ?? 'Chưa phân công') ?></div>
+                    <div class="col-md-6"><strong>Người phụ trách:</strong> <?= e($task['assignee_names'] ?? 'Chưa phân công') ?></div>
                     <div class="col-md-6"><strong>Mức ưu tiên:</strong> <?= e(priority_label($task['priority'])) ?></div>
                     <div class="col-md-6"><strong>Trạng thái:</strong> <span class="badge text-bg-<?= e(status_badge_class($task['status'])) ?>"><?= e(status_label($task['status'])) ?></span></div>
                     <div class="col-md-6"><strong>Hạn chót:</strong> <?= e(format_date($task['deadline'])) ?></div>
@@ -37,16 +53,16 @@
             </div>
         </div>
 
-        <?php if (current_user()['role'] === 'employee' && (int) ($task['assignee_id'] ?? 0) === (int) current_user()['id']): ?>
-            <div class="card border-0 shadow-sm mb-4">
+        <?php if ($canAssignedEmployeeUpdate): ?>
+            <div class="card border-0 shadow-sm mb-4" id="employee-adjust-section">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Cập nhật tiến độ</h2>
+                    <h2 class="h5 mb-3">Điều chỉnh công việc</h2>
                     <form method="post" action="<?= e(route_url('cong_viec/updateStatus', ['id' => $task['id']])) ?>">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Trạng thái mới</label>
                                 <select class="form-select" name="status">
-                                    <?php foreach (['in_progress' => 'Đang thực hiện', 'blocked' => 'Bị chặn', 'submitted' => 'Chờ duyệt'] as $status => $label): ?>
+                                    <?php foreach ($statusOptions as $status => $label): ?>
                                         <option value="<?= e($status) ?>"><?= e($label) ?></option>
                                     <?php endforeach; ?>
                                 </select>
@@ -56,7 +72,7 @@
                                 <input class="form-control" name="note" placeholder="Ví dụ: đã hoàn thành 80% chức năng upload file">
                             </div>
                         </div>
-                        <button class="btn btn-primary mt-3">Lưu trạng thái</button>
+                        <button class="btn btn-primary mt-3">Lưu điều chỉnh</button>
                     </form>
                 </div>
             </div>
@@ -66,7 +82,7 @@
                     <h2 class="h5 mb-3">Upload file kết quả</h2>
                     <form method="post" enctype="multipart/form-data" action="<?= e(route_url('cong_viec/upload', ['id' => $task['id']])) ?>">
                         <input type="file" class="form-control" name="attachment" required>
-                        <div class="small text-secondary mt-2">Hệ thống sẽ kiểm tra định dạng, mã hóa file rồi mới lưu trữ.</div>
+                        <div class="small text-secondary mt-2">Tải file kết quả để quản lý kiểm tra và duyệt công việc.</div>
                         <button class="btn btn-dark mt-3">Upload và mã hóa file</button>
                     </form>
                 </div>
@@ -80,20 +96,17 @@
             <div class="card-body">
                 <?php 
                 $userRole = current_user()['role'];
-                $isAssignee = (int) ($task['assignee_id'] ?? 0) === (int) current_user()['id'];
-                $canAccessTask = (new \App\Models\Task())->canAccess(current_user(), $task['id']);
+                $isAssignee = $taskAccessModel->isUserAssigned((int) $task['id'], (int) current_user()['id']);
+                $canAccessTask = $taskAccessModel->canAccess(current_user(), (int) $task['id']);
                 ?>
                 
                 <?php foreach ($tep_dinh_kem as $file): ?>
                     <?php
-                    // Quyền xem file manager: Manager/Admin
                     $canViewManagerFile = ($file['file_type'] === 'manager') && 
                         in_array($userRole, ['manager', 'admin'], true);
                     
-                    // Quyền xem file project_manager: Tất cả thành viên có quyền truy cập task
                     $canViewProjectManagerFile = ($file['file_type'] === 'project_manager') && $canAccessTask;
                     
-                    // Hiển thị file nếu: là file employee HOẶC file manager mà user có quyền HOẶC file project_manager mà user có quyền
                     if ($file['file_type'] === 'employee' || $canViewManagerFile || $canViewProjectManagerFile):
                     ?>
                         <div class="border rounded-4 p-3 mb-3">

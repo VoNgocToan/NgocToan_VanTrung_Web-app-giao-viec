@@ -1,9 +1,9 @@
 <div class="section-header">
     <div>
         <div class="section-title">Quản lý công việc</div>
-        <p class="section-desc">Module cốt lõi của đề tài: tạo việc, phân công, theo dõi tiến độ, upload file và duyệt đánh giá.</p>
+        <p class="section-desc">Theo dõi danh sách công việc theo trạng thái và thao tác phù hợp.</p>
     </div>
-    <?php if (in_array(current_user()['role'], ['manager', 'admin'], true)): ?>
+    <?php if (can_manage_tasks()): ?>
         <a href="<?= e(route_url('cong_viec/create')) ?>" class="btn btn-primary">+ Tạo công việc</a>
     <?php endif; ?>
 </div>
@@ -47,26 +47,46 @@
                     <th>Người phụ trách</th>
                     <th>Trạng thái</th>
                     <th>Hạn chót</th>
-                    <th class="text-end">Thao tác</th>
+                    <th class="task-actions-head"><span class="task-actions-head-grid"><span class="task-actions-head-label">Thao tác</span></span></th>
                 </tr>
             </thead>
             <tbody>
             <?php foreach ($cong_viec as $task): ?>
+                <?php
+                    $primaryActionLabel = task_primary_action_label($task, current_user());
+                    $primaryActionUrl = task_primary_action_url($task, current_user());
+                ?>
                 <tr>
                     <td>
                         <div class="fw-semibold"><?= e($task['title']) ?></div>
-                        <div class="small text-secondary"><?= e(priority_label($task['priority'])) ?> • KPI kỳ vọng <?= e((string) $task['expected_score']) ?></div>
+                        <div class="small text-secondary"><?= e(priority_label($task['priority'])) ?> • KPI <?= e((string) $task['expected_score']) ?></div>
                     </td>
                     <td><?= e($task['project_name']) ?></td>
-                    <td><?= e($task['assignee_name'] ?? 'Chưa phân công') ?></td>
+                    <td title="<?= e($task['assignee_names'] ?? 'Chưa phân công') ?>"><?= e(task_assignee_summary($task['assignee_names'] ?? '')) ?></td>
                     <td><span class="badge text-bg-<?= e(status_badge_class($task['status'])) ?>"><?= e(status_label($task['status'])) ?></span></td>
                     <td><?= e(format_date($task['deadline'])) ?></td>
-                    <td class="text-end">
-                        <a class="btn btn-sm btn-outline-dark" href="<?= e(route_url('cong_viec/show', ['id' => $task['id']])) ?>">Chi tiết</a>
-                        <?php if (in_array(current_user()['role'], ['manager', 'admin'], true)): ?>
-                            <a class="btn btn-sm btn-outline-primary" href="<?= e(route_url('cong_viec/assign', ['id' => $task['id']])) ?>">Phân công</a>
-                            <a class="btn btn-sm btn-outline-success" href="<?= e(route_url('cong_viec/review', ['id' => $task['id']])) ?>">Duyệt</a>
-                        <?php endif; ?>
+                    <td class="task-actions-cell">
+                        <div class="task-actions-grid">
+                            <div class="task-action-slot">
+                                <a class="btn btn-sm btn-outline-dark w-100" href="<?= e(route_url('cong_viec/show', ['id' => $task['id']])) ?>">Chi tiết</a>
+                            </div>
+                            <div class="task-action-slot">
+                                <?php if ($primaryActionLabel && $primaryActionUrl): ?>
+                                    <a class="btn btn-sm btn-outline-primary w-100" href="<?= e($primaryActionUrl) ?>"><?= e($primaryActionLabel) ?></a>
+                                <?php else: ?>
+                                    <span class="task-action-placeholder"></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="task-action-slot">
+                                <?php if (task_can_delete($task)): ?>
+                                    <form method="post" action="<?= e(route_url('cong_viec/destroy', ['id' => $task['id']])) ?>" onsubmit="return confirm('Bạn có chắc muốn xóa công việc này không?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">Xóa</button>
+                                    </form>
+                                <?php else: ?>
+                                    <span class="task-action-placeholder"></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

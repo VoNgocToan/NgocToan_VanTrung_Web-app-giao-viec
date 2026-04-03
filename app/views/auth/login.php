@@ -1,32 +1,80 @@
-<div class="login-card">
-    <div class="login-hero">
-        <div class="hero-badge">Project_App • MVC • PHP & MySQL</div>
-        <h1 class="section-title mb-2">Đăng nhập hệ thống giao việc</h1>
-        <p class="section-desc">Bản demo phục vụ khóa luận: quản lý tài khoản, dự án, công việc, mã hóa file và báo cáo KPI.</p>
-    </div>
+<div class="auth-compact-shell">
+    <section class="auth-split-card">
+        <div class="auth-visual-panel">
+            <div class="auth-visual-top">
+                <span class="public-kicker dark">TruTo Work</span>
+                <h2>Quản lý dự án và công việc trên một giao diện gọn gàng.</h2>
+                <p>Thiết kế sạch, dễ nhìn và phù hợp cho doanh nghiệp sử dụng hằng ngày.</p>
+            </div>
 
-    <div class="card border-0 shadow-sm">
-        <div class="card-body p-4 p-lg-5">
-            <form method="post" action="<?= e(route_url('auth/login')) ?>">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Email đăng nhập</label>
-                    <input type="email" name="email" class="form-control" required value="<?= e(old('email', 'admin@taskflow.local')) ?>">
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-semibold">Mật khẩu</label>
-                    <input type="password" name="password" class="form-control" required value="admin123">
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Đăng nhập vào Project_App</button>
-            </form>
-
-            <div class="info-strip mt-4">
-                <div class="fw-semibold mb-2">Tài khoản mẫu để demo</div>
-                <div class="small text-secondary">
-                    <div><strong>Admin:</strong> admin@taskflow.local / admin123</div>
-                    <div><strong>Trưởng nhóm:</strong> manager@taskflow.local / manager123</div>
-                    <div><strong>Nhân viên:</strong> employee1@taskflow.local / employee123</div>
-                </div>
+            <div class="auth-visual-board">
+                <img src="assets/images/task-landing.svg" alt="Minh họa giao việc">
             </div>
         </div>
-    </div>
+
+        <div class="auth-form-panel">
+            <div class="auth-form-head">
+                <a class="back-home-link" href="<?= e(route_url('home/index')) ?>">← Quay lại trang chủ</a>
+                <h1>Đăng nhập</h1>
+                <p>Đăng nhập để quản lý dự án, công việc và theo dõi tiến độ xử lý.</p>
+            </div>
+
+            <form method="post" action="<?= e(route_url('auth/login')) ?>" class="auth-form-main">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Email đăng nhập</label>
+                    <input type="email" name="email" class="form-control form-control-lg" required value="<?= e(old('email', 'admin@taskflow.local')) ?>" placeholder="Nhập email đăng nhập">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Mật khẩu</label>
+                    <input type="password" name="password" class="form-control form-control-lg" required value="admin123" placeholder="Nhập mật khẩu">
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg w-100">Đăng nhập vào hệ thống</button>
+            </form>
+
+            <div class="demo-accounts-box">
+                <div class="demo-accounts-head">
+                    <strong>Tài khoản mẫu</strong>
+                    <span>Bấm chọn để tự điền nhanh</span>
+                </div>
+
+                <button type="button" class="demo-account-item" data-email="admin@taskflow.local" data-password="admin123">
+                    <div>
+                        <strong>Admin</strong>
+                        <span>admin@taskflow.local</span>
+                    </div>
+                    <small>admin123</small>
+                </button>
+
+                <button type="button" class="demo-account-item" data-email="manager@taskflow.local" data-password="manager123">
+                    <div>
+                        <strong>Trưởng nhóm</strong>
+                        <span>manager@taskflow.local</span>
+                    </div>
+                    <small>manager123</small>
+                </button>
+
+                <button type="button" class="demo-account-item" data-email="employee1@taskflow.local" data-password="employee123">
+                    <div>
+                        <strong>Nhân viên</strong>
+                        <span>employee1@taskflow.local</span>
+                    </div>
+                    <small>employee123</small>
+                </button>
+            </div>
+        </div>
+    </section>
 </div>
+
+<script>
+    document.querySelectorAll('.demo-account-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            const emailInput = document.querySelector('input[name="email"]');
+            const passwordInput = document.querySelector('input[name="password"]');
+            if (emailInput && passwordInput) {
+                emailInput.value = this.dataset.email || '';
+                passwordInput.value = this.dataset.password || '';
+                emailInput.focus();
+            }
+        });
+    });
+</script>

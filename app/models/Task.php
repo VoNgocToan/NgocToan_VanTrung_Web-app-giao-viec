@@ -3,11 +3,20 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use PDO;
+
 /**
  * Model xử lý nghiệp vụ công việc, phân công, duyệt và lịch sử trạng thái.
  */
 class Task extends BaseModel
 {
+    public function __construct()
+    {
+        parent::__construct();
+        $this->ensureMultiAssigneeStorage();
+        $this->syncLegacyAssignments();
+    }
+
     /**
      * Lấy danh sách công việc theo quyền và bộ lọc.
      */
@@ -27,7 +36,9 @@ class Task extends BaseModel
         }
 
         if ($user['role'] === 'employee') {
-            $conditions[] = 't.assignee_id = :uid';
+            $conditions[] = '(t.assignee_id = :uid OR EXISTS (
+                SELECT 1 FROM cong_viec_phu_trach cpt WHERE cpt.task_id = t.id AND cpt.user_id = :uid
+            ))';
             $params['uid'] = (int) $user['id'];
         } elseif ($user['role'] === 'manager') {
             $conditions[] = '(t.created_by = :uid OR p.created_by = :uid OR EXISTS (
@@ -38,7 +49,14 @@ class Task extends BaseModel
 
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
         $sql = "SELECT t.*, p.name AS project_name, p.code AS project_code,
-                       assignee.name AS assignee_name, creator.name AS creator_name
+                       assignee.name AS assignee_name,
+                       COALESCE(NULLIF((
+                           SELECT GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ')
+                           FROM cong_viec_phu_trach cpt
+                           INNER JOIN tai_khoan u ON u.id = cpt.user_id
+                           WHERE cpt.task_id = t.id
+                       ), ''), assignee.name) AS assignee_names,
+                       creator.name AS creator_name
                 FROM cong_viec t
                 INNER JOIN du_an p ON p.id = t.project_id
                 LEFT JOIN tai_khoan assignee ON assignee.id = t.assignee_id
@@ -58,7 +76,14 @@ class Task extends BaseModel
     {
         $stmt = $this->db->prepare(
             'SELECT t.*, p.name AS project_name, p.code AS project_code,
-                    assignee.name AS assignee_name, creator.name AS creator_name
+                    assignee.name AS assignee_name,
+                    COALESCE(NULLIF((
+                        SELECT GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ", ")
+                        FROM cong_viec_phu_trach cpt
+                        INNER JOIN tai_khoan u ON u.id = cpt.user_id
+                        WHERE cpt.task_id = t.id
+                    ), ""), assignee.name) AS assignee_names,
+                    creator.name AS creator_name
              FROM cong_viec t
              INNER JOIN du_an p ON p.id = t.project_id
              LEFT JOIN tai_khoan assignee ON assignee.id = t.assignee_id
@@ -91,25 +116,44 @@ class Task extends BaseModel
     }
 
     /**
-     * Gán người phụ trách cho công việc.
+     * Gán một hoặc nhiều người phụ trách cho công việc.
      */
     public function assign(int $id, array $data): bool
     {
-        $stmt = $this->db->prepare(
-            "UPDATE cong_viec
-             SET assignee_id = :assignee_id,
-                 start_date = :start_date,
-                 deadline = :deadline,
-                 status = 'assigned',
-                 updated_at = NOW()
-             WHERE id = :id"
-        );
-        return $stmt->execute([
-            'id' => $id,
-            'assignee_id' => $data['assignee_id'],
-            'start_date' => $data['start_date'],
-            'deadline' => $data['deadline'],
-        ]);
+        $assigneeIds = $this->normalizeAssigneeIds($data['assignee_ids'] ?? []);
+        if (!$assigneeIds) {
+            return false;
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare(
+                "UPDATE cong_viec
+                 SET start_date = :start_date,
+                     deadline = :deadline,
+                     status = 'assigned',
+                     updated_at = NOW()
+                 WHERE id = :id"
+            );
+            $ok = $stmt->execute([
+                'id' => $id,
+                'start_date' => $data['start_date'],
+                'deadline' => $data['deadline'],
+            ]);
+
+            if (!$ok || !$this->syncAssignees($id, $assigneeIds)) {
+                $this->db->rollBack();
+                return false;
+            }
+
+            $this->db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return false;
+        }
     }
 
     /**
@@ -204,6 +248,40 @@ class Task extends BaseModel
     }
 
     /**
+     * Danh sách người phụ trách hiện tại của công việc.
+     */
+    public function assignedUsers(int $taskId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT u.id, u.name, u.email, u.role
+             FROM cong_viec_phu_trach cpt
+             INNER JOIN tai_khoan u ON u.id = cpt.user_id
+             WHERE cpt.task_id = :task_id
+             ORDER BY u.name'
+        );
+        $stmt->execute(['task_id' => $taskId]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Kiểm tra người dùng có đang là người phụ trách công việc hay không.
+     */
+    public function isUserAssigned(int $taskId, int $userId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*)
+             FROM cong_viec_phu_trach
+             WHERE task_id = :task_id AND user_id = :user_id'
+        );
+        $stmt->execute([
+            'task_id' => $taskId,
+            'user_id' => $userId,
+        ]);
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
      * Kiểm tra người dùng có quyền xem/tải công việc và file liên quan hay không.
      */
     public function canAccess(array $user, int $taskId): bool
@@ -217,7 +295,7 @@ class Task extends BaseModel
             return true;
         }
 
-        if ((int) $task['assignee_id'] === (int) $user['id'] || (int) $task['created_by'] === (int) $user['id']) {
+        if ($this->isUserAssigned($taskId, (int) $user['id']) || (int) $task['created_by'] === (int) $user['id']) {
             return true;
         }
 
@@ -228,6 +306,57 @@ class Task extends BaseModel
         ]);
 
         return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Kiểm tra người dùng hiện tại có được xóa công việc hay không.
+     */
+    public function canDelete(array $user, int $taskId): bool
+    {
+        $task = $this->find($taskId);
+        if (!$task || !$this->canAccess($user, $taskId)) {
+            return false;
+        }
+
+        if (!in_array($user['role'] ?? '', ['manager', 'admin'], true)) {
+            return false;
+        }
+
+        return in_array($task['status'], ['new', 'assigned', 'blocked', 'redo'], true);
+    }
+
+    /**
+     * Xóa công việc và dọn các file đã lưu trong storage.
+     */
+    public function deleteTask(int $taskId): bool
+    {
+        $stmt = $this->db->prepare('SELECT encrypted_path FROM tep_dinh_kem WHERE task_id = :task_id');
+        $stmt->execute(['task_id' => $taskId]);
+        $paths = $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+
+        $this->db->beginTransaction();
+        try {
+            $deleteTask = $this->db->prepare('DELETE FROM cong_viec WHERE id = :id');
+            $ok = $deleteTask->execute(['id' => $taskId]);
+            if (!$ok) {
+                $this->db->rollBack();
+                return false;
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return false;
+        }
+
+        foreach ($paths as $filePath) {
+            if ($filePath && is_file($filePath)) {
+                @unlink($filePath);
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -257,5 +386,75 @@ class Task extends BaseModel
         }
 
         return $stats;
+    }
+
+    private function normalizeAssigneeIds(array $userIds): array
+    {
+        $normalized = [];
+        foreach ($userIds as $userId) {
+            $value = (int) $userId;
+            if ($value > 0) {
+                $normalized[$value] = $value;
+            }
+        }
+
+        return array_values($normalized);
+    }
+
+    private function syncAssignees(int $taskId, array $userIds): bool
+    {
+        $primaryAssigneeId = $userIds[0] ?? null;
+
+        $deleteStmt = $this->db->prepare('DELETE FROM cong_viec_phu_trach WHERE task_id = :task_id');
+        if (!$deleteStmt->execute(['task_id' => $taskId])) {
+            return false;
+        }
+
+        $insertStmt = $this->db->prepare(
+            'INSERT INTO cong_viec_phu_trach(task_id, user_id, created_at)
+             VALUES(:task_id, :user_id, NOW())'
+        );
+        foreach ($userIds as $userId) {
+            if (!$insertStmt->execute(['task_id' => $taskId, 'user_id' => $userId])) {
+                return false;
+            }
+        }
+
+        $updatePrimaryStmt = $this->db->prepare(
+            'UPDATE cong_viec SET assignee_id = :assignee_id WHERE id = :id'
+        );
+
+        return $updatePrimaryStmt->execute([
+            'id' => $taskId,
+            'assignee_id' => $primaryAssigneeId,
+        ]);
+    }
+
+    private function ensureMultiAssigneeStorage(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE IF NOT EXISTS cong_viec_phu_trach (
+                id INT(11) NOT NULL AUTO_INCREMENT,
+                task_id INT(11) NOT NULL,
+                user_id INT(11) NOT NULL,
+                created_at DATETIME NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY uniq_task_user (task_id, user_id),
+                KEY idx_task_id (task_id),
+                KEY idx_user_id (user_id),
+                CONSTRAINT fk_cpt_task FOREIGN KEY (task_id) REFERENCES cong_viec (id) ON DELETE CASCADE,
+                CONSTRAINT fk_cpt_user FOREIGN KEY (user_id) REFERENCES tai_khoan (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci'
+        );
+    }
+
+    private function syncLegacyAssignments(): void
+    {
+        $this->db->exec(
+            'INSERT IGNORE INTO cong_viec_phu_trach(task_id, user_id, created_at)
+             SELECT id, assignee_id, NOW()
+             FROM cong_viec
+             WHERE assignee_id IS NOT NULL'
+        );
     }
 }

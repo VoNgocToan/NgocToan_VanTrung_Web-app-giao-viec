@@ -1,7 +1,7 @@
 <div class="section-header">
     <div>
         <div class="section-title">Báo cáo KPI</div>
-        <p class="section-desc">Điểm KPI demo theo đề tài: đúng hạn cộng điểm, trễ hạn trừ điểm, bị trả lại trừ điểm và cộng thêm điểm review.</p>
+        <p class="section-desc">Theo dõi hiệu suất theo số việc, tiến độ hoàn thành và điểm đánh giá.</p>
     </div>
 </div>
 

@@ -1,7 +1,7 @@
 <div class="section-header">
     <div>
         <div class="section-title">Tổng quan hệ thống</div>
-        <p class="section-desc">Xin chào <?= e($user['name']) ?>. Đây là màn hình tổng hợp nhanh để theo dõi dự án, công việc và KPI theo vai trò.</p>
+        <p class="section-desc">Tổng hợp nhanh dự án, công việc và kết quả xử lý.</p>
     </div>
     <span class="badge rounded-pill text-bg-primary px-3 py-2"><?= e(role_label($user['role'])) ?></span>
 </div>
